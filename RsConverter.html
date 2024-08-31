@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html ng-app="numberToWordsApp">
+
+<head>
+    <title>Number to Words Converter</title>
+    <!-- Include AngularJS -->
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f4f8;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 400px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #222e4b;
+            margin-bottom: 20px;
+        }
+
+        input[type="number"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: #222e4b;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #1a2340;
+        }
+
+        p {
+            background-color: rgb(248, 248, 248);
+            /* padding: 10px; */
+            border-radius: 4px;
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .loader {
+    border: 6px solid #f3f3f3; /* Light grey */
+    border-top: 6px solid #222e4b; /* Blue */
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto; /* Center the loader */
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+    </style>
+</head>
+
+<body ng-controller="NumberToWordsController">
+<div class="container">
+    <h1>Number to Words Converter</h1>
+    <input type="number" ng-model="number" placeholder="Enter a number">
+    <button ng-click="convertNumber()">Convert</button>
+    <p ng-hide="loading">{{ words }}</p>
+    <div class="loader" ng-show="loading"></div>
+</div>
+
+    <script>
+        // Define the AngularJS module
+        var app = angular.module('numberToWordsApp', []);
+
+        // Define the currencyFormatService
+            app.factory('currencyFormatService', function () {
+                function formatIndianCurrency(number) {
+                    // Convert the number to a string if it's not already
+                    let numStr = number.toString();
+
+                    // Split the number into integer and decimal parts
+                    let [integerPart, decimalPart] = numStr.split('.');
+
+                    // Apply the regex to format the integer part in Indian style
+                    let lastThreeDigits = integerPart.slice(-3); // Get the last three digits
+                    let otherDigits = integerPart.slice(0, -3);  // Get the digits before the last three
+
+                    // Format the other digits part with commas every two digits
+                    if (otherDigits !== '') {
+                        otherDigits = otherDigits.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+                    }
+
+                    // Combine the parts with the last three digits
+                    let formattedNumber = otherDigits + (otherDigits ? ',' : '') + lastThreeDigits;
+
+                    // If there is a decimal part, add it back to the formatted number
+                    if (decimalPart) {
+                        formattedNumber += '.' + decimalPart;
+                    }
+
+                    return formattedNumber;
+                }
+
+                // Expose the formatIndianCurrency function as a service method
+                return {
+                    format: formatIndianCurrency
+                };
+            });
+
+        // Define the numberToWordsService
+        app.factory('numberToWordsService', function () {
+            let thousands = ['', 'thousand', 'lakh', 'crore', 'arab'];
+            let digits = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+            let tens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+            let twenties = ['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+
+            function convertNumberToWords(number) {
+                if (number === undefined || number === null) return 'invalid input';
+
+                number = number.toString().replace(/[\, ]/g, '');
+                if (isNaN(number)) return 'invalid input';
+
+                let decimalIndex = number.indexOf('.');
+                let fractionPart = decimalIndex !== -1 ? number.slice(decimalIndex + 1) : '';
+                let wholePart = decimalIndex !== -1 ? number.slice(0, decimalIndex) : number;
+                if (wholePart.length > 15) return 'too big';
+
+                let word = convertWholePartToWords(wholePart) + ' rupees';
+
+                if (fractionPart) {
+                    let fractionWords = convertFractionPartToWords(fractionPart);
+                    word += ' and ' + fractionWords + ' paisa only.';
+                } else {
+                    word += ' only';
+                }
+
+                return word.replace(/\s+/g, ' ').trim();
+            }
+
+            function convertWholePartToWords(num) {
+                let word = '';
+                let unitIndex = 0;
+
+                while (num.length > 0) {
+                    let chunkSize;
+                    if (unitIndex === 1 || unitIndex === 2) { // handle thousands and lakhs
+                        chunkSize = 2;
+                    } else if (unitIndex === 3) { // handle crores
+                        chunkSize = 2;
+                    } else { // handle the hundreds place
+                        chunkSize = 3;
+                    }
+
+                    let chunk = num.slice(-chunkSize);
+                    num = num.slice(0, -chunkSize);
+
+                    let chunkNumber = parseInt(chunk, 10);
+                    if (chunkNumber > 0) {
+                        if (unitIndex === 0) {
+                            word = getWordsForChunk(chunkNumber) + ' ' + word;
+                        } else {
+                            word = getWordsForChunk(chunkNumber) + ' ' + thousands[unitIndex] + ' ' + word;
+                        }
+                    }
+                    unitIndex++;
+                }
+
+                return word.trim();
+            }
+
+            function convertFractionPartToWords(num) {
+                let fractionNumber = parseInt(num, 10);
+                if (fractionNumber === 0) return '';
+                return getWordsForChunk(fractionNumber);
+            }
+
+            function getWordsForChunk(chunkNumber) {
+                let chunkWord = '';
+                if (chunkNumber >= 100) {
+                    chunkWord += digits[Math.floor(chunkNumber / 100)] + ' hundred ';
+                    chunkNumber = chunkNumber % 100;
+                }
+                if (chunkNumber >= 20) {
+                    chunkWord += twenties[Math.floor(chunkNumber / 10) - 2] + ' ';
+                    chunkNumber = chunkNumber % 10;
+                }
+                if (chunkNumber > 0 && chunkNumber < 10) {
+                    chunkWord += digits[chunkNumber] + ' ';
+                } else if (chunkNumber >= 10) {
+                    chunkWord += tens[chunkNumber - 10] + ' ';
+                }
+                return chunkWord.trim();
+            }
+            // Expose the convertNumberToWords function as a service method
+            return {
+                convert: convertNumberToWords
+            };
+        });
+
+        // Define a controller that uses the numberToWordsService
+            app.controller('NumberToWordsController', function ($scope, numberToWordsService) {
+                $scope.number = null;
+                $scope.words = '';
+                $scope.loading = false; // Initialize loading flag
+
+                $scope.convertNumber = function () {
+                    if ($scope.number.toString().length <= 12) {
+                        $scope.loading = true; // Show the loader
+                        setTimeout(function () { // Simulate a delay for the conversion process
+                            $scope.words = numberToWordsService.convert($scope.number);
+                            $scope.loading = false; // Hide the loader
+                            $scope.$apply(); // Update the scope since setTimeout is outside Angular's digest cycle
+                        }, 1000); // 1 second delay for demonstration purposes
+                    } else {
+                        alert('Invalid Amount');
+                    }
+                };
+            });
+
+    </script>
+</body>
+
+</html>
